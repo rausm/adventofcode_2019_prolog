@@ -1,8 +1,11 @@
 :- module(day04, [solve/2]).
 
+:- use_module(library(apply)).
+
 parse_input(Input, Low, High) :- phrase((number(Low), "-", number(High)), Input).
 
 
+% using CLP/FD for this gives attrocious performance (281s vs 2.7s)
 number_digits(N, num(D1, D2, D3, D4, D5, D6)) :-
     divmod(N,  100000, D1, N1),
     divmod(N1, 10000,  D2, N2),
@@ -31,24 +34,26 @@ constrain2(num(D1, D2, D3, D4, D5, D6)) :-
 
 
 % generates all matching numbers on backtracking
-enum_valid(Low, High, Constraint, LN) :-
+enum_valid(Low, High, (R1, R2)) :-
     between(Low, High, N),
-    number_digits(N, LN),
-    non_decreasing(LN),
-    Goal =.. [Constraint, LN],
-    call(Goal).
+    number_digits(N, LN), % generating the number ...
+    non_decreasing(LN), % ... and checking non_decreasing only once ...
+    ( constrain1(LN) -> R1 = 1 ; R1 = 0), % ... and checking both contraints ...
+    ( constrain2(LN) -> R2 = 1 ; R2 = 0). % ... in one pass saves a lot of work
 
 
 % helper
-solve_(Low, High, Constraint, Res) :-
-    findall(LN, enum_valid(Low, High, Constraint, LN), LNs),
-    length(LNs, Res).
+solve_(Low, High, R1, R2) :-
+    findall(Res, enum_valid(Low, High, Res), Results),
+    foldl(
+        [(A1,A2), (N1, N2), (S1, S2)] >> (S1 is A1 + N1, S2 is A2 + N2),
+        Results, (0,0), (R1, R2) % again, we only have to walk the list once
+    ).
 
 
 solve(R1, R2) :-
     input(I), parse_input(I, Low, High),
-    solve_(Low, High, constrain1, R1),
-    solve_(Low, High, constrain2, R2).
+    solve_(Low, High, R1, R2).
 
 
 input(`372304-847060`).
