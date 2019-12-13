@@ -1,30 +1,30 @@
 :- module(day03, [solve/2]).
 
 :- use_module(library(clpfd)).
-:- use_module(common, [lines/2, split_string_on/3]).
+:- use_module(library(dcg/high_order)).
 
 :- dynamic(w1/1).
 :- dynamic(w2/1).
 :- retractall(w1(_)).
 :- retractall(w2(_)).
 
-% parse line of instructions
-instrs(Str, Instrs) :- split_string_on(Str, ",", Instrs).
+% DCG for direction
+dir(u) --> "U".  dir(d) --> "D".  dir(l) --> "L".  dir(r) --> "R".
+
+
+% DCG for one instr
+instr((Dir,Steps)) --> dir(Dir), number(Steps).
+
+
+% sequence of (sequence of instrs, separated by ",") separated by "\n"
+wires(Wires) --> sequence(sequence(instr, ","), "\n", Wires).
 
 
 % position after N steps in a direction
-diff("U", N, (X,Y), (X,Y1)) :- Y1 #= Y + N.
-diff("D", N, (X,Y), (X,Y1)) :- Y1 #= Y - N.
-diff("R", N, (X,Y), (X1,Y)) :- X1 #= X + N.
-diff("L", N, (X,Y), (X1,Y)) :- X1 #= X - N.
-
-
-% interpret instruction as move from Pos to NewPos
-interp_instr(Instr, Pos, NewPos) :-
-    sub_string(Instr, 0, 1, _, Direction),
-    sub_string(Instr, 1, _, 0, StepsStr),
-    number_string(Steps, StepsStr),
-    diff(Direction, Steps, Pos, NewPos).
+interp_instr((u, N), (X,Y), (X,Y1)) :- Y1 #= Y + N.
+interp_instr((d, N), (X,Y), (X,Y1)) :- Y1 #= Y - N.
+interp_instr((r, N), (X,Y), (X1,Y)) :- X1 #= X + N.
+interp_instr((l, N), (X,Y), (X1,Y)) :- X1 #= X - N.
 
 
 % assert one point ...
@@ -57,7 +57,7 @@ assert_points_y(Name, Y, X1, X2) :-
 
 
 % between doesn't go downwards, this does (we need to assert the points
-% in the right order !).
+% in correct order !).
 gen_range(N1, N2, Res) :-
     N2 #< N1,
     !,
@@ -88,8 +88,7 @@ assert_wire(Name, [Instr | Rest], Pos) :-
 
 
 % assert all points on wire
-assert_wire(Name, Instrs) :-
-    assert_wire(Name, Instrs, (0,0)).
+assert_wire(Name, Instrs) :- assert_wire(Name, Instrs, (0,0)).
 
 
 % manhattan distance
@@ -106,18 +105,12 @@ solve1(Intersections, Res) :-
     min_list(Distances, Res).
 
 
-% number of steps up to Pos
-length_up_to([Pos| _], Pos, Acc,  Acc) :- !.
-length_up_to([_ | Rest], Pos, Acc, Res) :-
-    Acc1 #= Acc + 1,
-    length_up_to(Rest, Pos, Acc1, Res).
-
-
 % solve intersection for part 2
 solve2intersection(W1List, W2List, Pos, Res) :-
-    length_up_to([(0,0) | W1List], Pos, 0, Steps1),
-    length_up_to([(0,0) | W2List], Pos, 0, Steps2),
-    Res is Steps1+Steps2.
+    nth1(Steps1, W1List, Pos), % nth1 gives us +1 index which accounts...
+    nth1(Steps2, W2List, Pos), % ... for missing start / first intersection (0,0)
+    !, % cut away nth1/3 searching for next occurences
+    Res #= Steps1+Steps2.
 
 
 % find shortest solution for part 2
@@ -129,15 +122,13 @@ solve2(Intersections, Res) :-
 
 
 solve(R1, R2) :-
-    input(I),
-    lines(I, [W1Str, W2Str]),
-    instrs(W1Str, W1Instrs),
-    instrs(W2Str, W2Instrs),
-    assert_wire(w1, W1Instrs),
-    assert_wire(w2, W2Instrs),
-    intersections(Intersections),
-    solve1(Intersections, R1),
-    solve2(Intersections, R2).
+    input(IStr), string_codes(IStr, ICodes),
+    once(phrase(wires([W1,W2]), ICodes)),
+    assert_wire(w1, W1),
+    assert_wire(w2, W2),
+    intersections(Is),
+    solve1(Is, R1),
+    solve2(Is, R2).
 
 
 input("R1009,U263,L517,U449,L805,D78,L798,D883,L777,D562,R652,D348,R999,D767,L959,U493,R59,D994,L225,D226,R634,D200,R953,U343,L388,U158,R943,U544,L809,D785,R618,U499,L476,U600,L452,D693,L696,U764,L927,D346,L863,D458,L789,U268,R586,U884,L658,D371,L910,U178,R524,U169,R973,D326,R483,U233,R26,U807,L246,D711,L641,D75,R756,U365,R203,D377,R624,U430,L422,U367,R547,U294,L916,D757,R509,D332,R106,D401,L181,U5,L443,U197,R406,D829,R878,U35,L958,U31,L28,D362,R188,D582,R358,U750,R939,D491,R929,D513,L541,U418,R861,D639,L917,U582,R211,U725,R711,D718,L673,U921,L157,U83,L199,U501,L66,D993,L599,D947,L26,U237,L981,U833,L121,U25,R641,D372,L757,D645,R287,U390,R274,U964,R288,D209,R109,D364,R983,U715,L315,U758,R36,D500,R626,U893,L840,U716,L606,U831,L969,D643,L300,D838,R31,D751,L632,D702,R468,D7,L169,U149,R893,D33,R816,D558,R152,U489,L237,U415,R434,D472,L198,D874,L351,U148,R761,U809,R21,D25,R586,D338,L568,U20,L157,U221,L26,U424,R261,D227,L551,D754,L90,U110,L791,U433,R840,U323,R240,U124,L723,D418,R938,D173,L160,U293,R773,U204,R192,U958,L472,D703,R556,D168,L263,U574,L845,D932,R165,D348,R811,D834,R960,U877,R935,D141,R696,U748,L316,U236,L796,D566,R524,U449,R378,U480,L79,U227,R867,D185,R474,D757,R366,U153,R882,U252,R861,U900,R28,U381,L845,U642,L849,U352,R134,D294,R788,D406,L693,D697,L433,D872,R78,D364,R240,U995,R48,D681,R727,D825,L583,U44,R743,D929,L616,D262,R997,D15,R575,U341,R595,U889,R254,U76,R962,D944,R724,D261,R608,U753,L389,D324,L569,U308,L488,D358,L695,D863,L712,D978,R149,D177,R92
